@@ -26,10 +26,11 @@ def run(is_training=False, training_episodes=10000, render_mode="human"):
         "CartPole-v1",
         render_mode=render_mode
     )
-    cart_positions = np.linspace(env.observation_space.low[0], env.observation_space.high[0], 20)
-    cart_velocities = np.linspace(-4, 4, 20)
-    pole_angles = np.linspace(-0.418, 0.418, 20)
-    pole_velocities = np.linspace(-4.0, 4.0, 20)
+    interpolation_resolution = 20
+    cart_positions = np.linspace(env.observation_space.low[0], env.observation_space.high[0], interpolation_resolution)
+    cart_velocities = np.linspace(-4, 4, interpolation_resolution)
+    pole_angles = np.linspace(-0.3, 0.3, interpolation_resolution)
+    pole_velocities = np.linspace(-4.0, 4.0, interpolation_resolution)
     q_table = np.zeros([len(cart_positions), len(cart_velocities), len(pole_angles), len(pole_velocities), env.action_space.n])
     if not is_training:
         q_table = np.load(get_q_table_filename())
@@ -46,23 +47,24 @@ def run(is_training=False, training_episodes=10000, render_mode="human"):
         state, info = env.reset()
         rewards = 0
         terminated = False
-        while not terminated and rewards < 10000:
-            cart_position = np.digitize(state[0], cart_positions) - 1
-            cart_velocity = np.digitize(state[1], cart_velocities) - 1
-            pole_angle = np.digitize(state[2], pole_angles) - 1
-            pole_velocity = np.digitize(state[3], pole_velocities) - 1
+        truncated = False
+        while not terminated and not truncated and rewards < 10000:
+            cart_position = np.clip(np.digitize(state[0], cart_positions) - 1, 0, interpolation_resolution - 1)
+            cart_velocity = np.clip(np.digitize(state[1], cart_velocities) - 1, 0, interpolation_resolution - 1)
+            pole_angle = np.clip(np.digitize(state[2], pole_angles) - 1, 0, interpolation_resolution - 1)
+            pole_velocity = np.clip(np.digitize(state[3], pole_velocities) - 1, 0, interpolation_resolution - 1)
             if is_training and np.random.random() < epsilon:
                 action = env.action_space.sample()
             else:
                 action = np.argmax(q_table[cart_position, cart_velocity, pole_angle, pole_velocity, :])
-            new_state, reward, terminated, _, _ = env.step(action)
+            new_state, reward, terminated, truncated, _ = env.step(action)
             rewards += reward
             state = new_state
             if is_training:
-                new_cart_position = np.digitize(new_state[0], cart_positions) - 1
-                new_cart_velocity = np.digitize(new_state[1], cart_velocities) - 1
-                new_pole_angle = np.digitize(new_state[2], pole_angles) - 1
-                new_pole_velocity = np.digitize(new_state[3], pole_velocities) - 1
+                new_cart_position = np.clip(np.digitize(new_state[0], cart_positions) - 1, 0, interpolation_resolution - 1)
+                new_cart_velocity = np.clip(np.digitize(new_state[1], cart_velocities) - 1, 0, interpolation_resolution - 1)
+                new_pole_angle = np.clip(np.digitize(new_state[2], pole_angles) - 1, 0, interpolation_resolution - 1)
+                new_pole_velocity = np.clip(np.digitize(new_state[3], pole_velocities) - 1, 0, interpolation_resolution - 1)
                 q_table[cart_position, cart_velocity, pole_angle, pole_velocity, action] = q_table[cart_position, cart_velocity, pole_angle, pole_velocity, action] + alpha * (
                     reward + gamma * np.max(q_table[new_cart_position, new_cart_velocity, new_pole_angle, new_pole_velocity, :]) - q_table[cart_position, cart_velocity, pole_angle, pole_velocity, action]
                 )
@@ -105,7 +107,7 @@ if __name__ == "__main__":
     render_mode = "human" if not is_training else None
     rewards_per_episode = run(
         is_training=is_training,
-        training_episodes=100000,
+        training_episodes=25000,
         render_mode=render_mode,
     )
     run(
