@@ -72,18 +72,22 @@ class FrozenLakeDQL:
                 return torch.argmax(q_values).item()
             
     def optimize(self, batch):
-        current_q_values = []
-        target_q_values = []
-        for state, action, reward, next_state, done in batch:
-            state = self.state_to_dql_input(state)
-            target = reward + self.discount_factor * self.target_network(self.state_to_dql_input(next_state)).max() * (1 - done)
-            current_q = self.policy_network(state)
-            current_q_values.append(current_q)
-            target_q = self.target_network(state)
-            target_q[action] = target
-            target_q_values.append(target_q)
-        
-        loss = self.loss_fn(torch.stack(current_q_values), torch.stack(target_q_values))
+        states = torch.stack([self.state_to_dql_input(s) for s, _, _, _, _ in batch])
+        actions = torch.tensor([a for _, a, _, _, _ in batch], device=self.device)
+        rewards = torch.tensor([r for _, _, r, _, _ in batch], dtype=torch.float32, device=self.device)
+        next_states = torch.stack([self.state_to_dql_input(ns) for _, _, _, ns, _ in batch])
+        dones = torch.tensor([d for _, _, _, _, d in batch], dtype=torch.float32, device=self.device)
+
+        # Current Q-values for actions taken
+        current_q = self.policy_network(states).gather(1, actions.unsqueeze(1)).squeeze()
+
+        # Double DQN target
+        with torch.no_grad():
+            best_actions = self.policy_network(next_states).argmax(dim=1)  # Online selects
+            next_q = self.target_network(next_states).gather(1, best_actions.unsqueeze(1)).squeeze()  # Target evaluates
+            targets = rewards + self.discount_factor * next_q * (1 - dones)
+
+        loss = self.loss_fn(current_q, targets)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()

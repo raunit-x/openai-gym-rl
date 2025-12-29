@@ -26,7 +26,7 @@ def run(is_training=False, training_episodes=10000, render_mode="human"):
         "CartPole-v1",
         render_mode=render_mode
     )
-    interpolation_resolution = 20
+    interpolation_resolution = 50
     cart_positions = np.linspace(env.observation_space.low[0], env.observation_space.high[0], interpolation_resolution)
     cart_velocities = np.linspace(-4, 4, interpolation_resolution)
     pole_angles = np.linspace(-0.3, 0.3, interpolation_resolution)
